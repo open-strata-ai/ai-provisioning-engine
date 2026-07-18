@@ -1,15 +1,15 @@
-# ADR-0004: Merge strategy of Helm Values ​​and local config
+# ADR-0005: Semantic boundaries for rollback
 
-- **Status**: Pending Alignment
+- **Status**: Pending (Open)
 - **Date**: 2026-07-17
 - **Suggested by**: OpenStrata Architecture Group
 - **Repository**: ai-provisioning-engine
-- **Source**: `design/DESIGN.md` §14 Open Issue
+- **Source**: `docs/DESIGN.md` §14 Open Issue
 - **Association**: (within this repository)
 
 ##Context
 
-What is the priority when the Yuan repository `dependencies/config/` conflicts with the App repository `infrastructure/config/`? Requires alignment with §15.6.
+Does the rollback component cascade rollback of its dependencies? A minimum rollback set needs to be defined. ---
 
 ## Decision Options (Options Considered)
 
@@ -19,7 +19,7 @@ What is the priority when the Yuan repository `dependencies/config/` conflicts w
 
 ## Recommended decision (Decision)
 
-This ADR solidifies the "merging strategy of Helm Values ​​and local config" into an architectural decision record and incorporates it into `design/adr/` for continuous tracking. This issue stems from the `design/DESIGN.md` §14 open issue and is still open.
+This ADR solidifies the "semantic boundaries of rollback" into architectural decision records and incorporates them into `docs/adr/` for continuous tracking. This issue stems from the `docs/DESIGN.md` §14 open issue and is still open.
 
 **Conservative Default Principle**: Before the final decision is made, the "minimum available + explicit configuration switch" shall prevail, maintain the current behavior, and not destroy the existing contract and cross-repository SPI interface; this ADR status will be written back after review by the relevant team.
 
@@ -27,10 +27,9 @@ This ADR solidifies the "merging strategy of Helm Values ​​and local config"
 
 ## To be aligned / Follow-ups (Follow-ups)
 
-- Associated architecture documents §15.6 (as a basis for decision-making and a source of consistency verification).
 - Solidify the decision before the review at the corresponding stage, and write the final conclusion back into this ADR (the status is changed from "Pending" to "Adopted").
 
 ## Traceback
 
-- Upstream design: `design/DESIGN.md` §14 Open issue
-- Relevance index: see `design/adr/README.md`
+- Upstream design: `docs/DESIGN.md` §14 Open issue
+- Relevance index: see `docs/adr/README.md`

@@ -1,15 +1,15 @@
-# ADR-0001: ArgoCD boot timing
+# ADR-0002: Dual-write migration ownership
 
 - **Status**: Pending (Open)
 - **Date**: 2026-07-17
 - **Suggested by**: OpenStrata Architecture Group
 - **Repository**: ai-provisioning-engine
-- **Source**: `design/DESIGN.md` §14 Open Issue
+- **Source**: `docs/DESIGN.md` §14 Open Issue
 - **Association**: (within this repository)
 
 ##Context
 
-The full archive repository is managed by ArgoCD, but how did ArgoCD itself be implemented (bootstrap) for the first time? Need to clarify chicken-egg.
+§13.5 Is the double-write verification of vector library switching performed by this repository or a dedicated migration job? Does the Resolver need to produce a "migration plan"?
 
 ## Decision Options (Options Considered)
 
@@ -19,7 +19,7 @@ The full archive repository is managed by ArgoCD, but how did ArgoCD itself be i
 
 ## Recommended decision (Decision)
 
-This ADR solidifies the "ArgoCD boot timing" into an architectural decision record and incorporates it into `design/adr/` for continuous tracking. This issue stems from the `design/DESIGN.md` §14 open issue and is still open.
+This ADR solidifies the "double-write migration ownership" as an architectural decision record and incorporates it into `docs/adr/` for continuous tracking. This issue stems from the `docs/DESIGN.md` §14 open issue and is still open.
 
 **Conservative Default Principle**: Before the final decision is made, the "minimum available + explicit configuration switch" shall prevail, maintain the current behavior, and not destroy the existing contract and cross-repository SPI interface; this ADR status will be written back after review by the relevant team.
 
@@ -27,9 +27,10 @@ This ADR solidifies the "ArgoCD boot timing" into an architectural decision reco
 
 ## To be aligned / Follow-ups (Follow-ups)
 
+- Associated architecture documents §13.5 (as a basis for decision-making and a source of consistency verification).
 - Solidify the decision before the review at the corresponding stage, and write the final conclusion back into this ADR (the status is changed from "Pending" to "Adopted").
 
 ## Traceback
 
-- Upstream design: `design/DESIGN.md` §14 Open issue
-- Relevance index: see `design/adr/README.md`
+- Upstream design: `docs/DESIGN.md` §14 Open issue
+- Relevance index: see `docs/adr/README.md`

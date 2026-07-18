@@ -219,6 +219,6 @@ Prometheus metrics:
 
 ---
 
-> For the processing pipeline, see [design/DESIGN.md §4](../design/DESIGN.md#4-Processing Pipeline--Request path input dependency expansion plan generation and execution)
-> For interface definition and package structure, see [arch/ARCH.md](../arch/ARCH.md)
-> For API endpoints and deployment details, see [specs/SPECS.md](../specs/SPECS.md)
+> For the processing pipeline, see [docs/DESIGN.md §4](./DESIGN.md#4-Processing Pipeline--Request path input dependency expansion plan generation and execution)
+> For interface definition and package structure, see [docs/ARCH.md](./ARCH.md)
+> For API endpoints and deployment details, see [docs/SPECS.md](./SPECS.md)

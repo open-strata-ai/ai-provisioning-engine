@@ -7,7 +7,7 @@
 > **Platform version**: v1.0.0
 > **Document Status**: Draft
 > **Responsible Person**: OpenStrata Architecture Group
-> **Associated links**: This repository [arch/ARCH.md](../../arch/ARCH.md) · [skills/SKILLS.md](../../skills/SKILLS.md) · [specs/SPECS.md](../../specs/SPECS.md); Architecture design document §13.3 (Dependency-aware automatic upgrade · Provisioning Engine) · §13.5 (Rollback and Security) · §9 (K8s Deployment) · §10.4 (SPI Multiple Implementation) · §12.2 (Four-Level Prefabrication) · §15.5 (DDD Layering) · §16 (BOM)
+> **Associated links**: This repository [docs/ARCH.md](../../docs/ARCH.md) · [docs/SKILLS.md](../../docs/SKILLS.md) · [docs/SPECS.md](../../docs/SPECS.md); Architecture design document §13.3 (Dependency-aware automatic upgrade · Provisioning Engine) · §13.5 (Rollback and Security) · §9 (K8s Deployment) · §10.4 (SPI Multiple Implementation) · §12.2 (Four-Level Prefabrication) · §15.5 (DDD Layering) · §16 (BOM)
 
 ---
 

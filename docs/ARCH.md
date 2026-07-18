@@ -317,6 +317,6 @@ RenderOutput（Helm Values YAML / compose.yaml / K8s manifest）
 
 ---
 
-> For detailed processing pipeline, please refer to [design/DESIGN.md §4](../design/DESIGN.md#4-Processing Pipeline--Request Path Input Dependency Expansion Plan Generation and Execution)
-> See [skills/SKILLS.md](../skills/SKILLS.md) for concurrency/security rules
-> For API endpoints and deployment details, see [specs/SPECS.md](../specs/SPECS.md)
+> For detailed processing pipeline, please refer to [docs/DESIGN.md §4](./DESIGN.md#4-Processing Pipeline--Request Path Input Dependency Expansion Plan Generation and Execution)
+> See [docs/SKILLS.md](./SKILLS.md) for concurrency/security rules
+> For API endpoints and deployment details, see [docs/SPECS.md](./SPECS.md)
