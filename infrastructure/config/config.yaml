@@ -1,0 +1,21 @@
+# ai-provisioning-engine · local SPI adapter configuration fragment (DESIGN §7.3)
+# Merged onto meta-repo defaults; overridable via CONFIG_PATH (JSON) at runtime.
+provisioner:
+  mode: helm            # helm | compose | argocd
+  argocd:
+    enabled: false      # full profile -> true
+    namespace: ai-system
+  rollout:
+    maxSurge: 1
+    maxUnavailable: 0
+    probeGraceSeconds: 30
+  grayCutover:
+    doubleWriteVerify: true   # canary switches with large impact double-write verify first
+  metaRepo:
+    profilesPath: openstrata-meta/profiles
+    configPath: openstrata-meta/dependencies/config
+  maxParallelDeploy: 8
+  applyTimeout: 300
+  readyTimeout: 30
+  replicas: 2
+  lockTTLSeconds: 60

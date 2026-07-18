@@ -11,23 +11,74 @@
 
 ```
 ai-provisioning-engine/
-├── src/ or cmd/            #Application code (according to §15.5.2 DDD four layers)
-├── infrastructure/config/  #★ This repository SPI adapter local configuration fragment
-├── Dockerfile / helm/      #Deployment artifacts
-├── .github/                #Independent CI for each repository (build/test/scan/publish)
-├── arch/                   #★ Architectural positioning (the role/boundary of this repository in the layering)
-├── design/                 #★ Design rules + ADR (evolutionary AI coding guidelines)
-├── skills/                 #★ AI coding skills (for consumption by CodeBuddy/Cursor, etc.)
-└── specs/                  #★ Specifications and contracts (API/AgentSpec/SPI Schema)
+├── cmd/                     # Entrypoint + hand-wired DI (offline stand-in for Wire)
+├── domain/                  #③ Domain layer (pure logic, zero external deps)
+│   ├── model.go             #   AssemblyPlan / RenderOutput / ApplyResult / ComponentStatus / Record
+│   ├── ports.go             #   Deployer / CICDPort / Store / Locker interfaces
+│   ├── errors.go            #   ProvisionError + codes + HTTP mapping
+│   └── service.go           #   Preflight / TopologicalLayers / Summary
+├── application/             #② Application layer (orchestration)
+│   ├── apply/               #   ApplyUseCase: preflight → render → apply → audit → summary
+│   └── rollback/            #   RollbackUseCase: declarative rollback (S5 guard)
+├── infrastructure/          #④ Infrastructure layer (SPI adapters = ACL)
+│   ├── adapter/             #   Helm / Compose / ArgoCD deployers + FakeCICD + SelectDeployer
+│   ├── persistence/         #   in-memory Store + Locker (prod: PostgreSQL + Redis)
+│   └── config/              #   Config loader + config.yaml fragment
+├── interfaces/http/         #① Access layer: net/http router (/v1/apply|rollback|status|plan)
+├── infrastructure/config/   #★ This repository SPI adapter local configuration fragment
+├── Dockerfile / Makefile    #Deployment artifacts
+├── .github/                 #Independent CI for each repository (build/test/scan/publish)
+└── docs/                    #★ Architecture / design / skills / specs (ARCH.md, DESIGN.md, SKILLS.md, SPECS.md, adr/)
 ```
 
-## Responsibilities of this repository (TODO: completion)
+## Responsibilities of this repository
 
-Describe in 1-3 sentences: the role of this repository in the layered architecture, the **SPI ports** exposed/dependent, and the external open source components it relies on (default ✅/optional).
+`ai-provisioning-engine` is the **second half of the OpenStrata assembly backbone** — the
+deployment/provisioning engine (assembly domain, §13.3). It consumes the **AssemblyPlan** produced
+by `ai-dependency-resolver`, renders it into Helm Values / Compose / K8s manifests by profile, and
+applies **only the differences** to the environment — incremental deployment, rolling update, zero
+downtime. It **only executes; it is not counted as a dependency**.
 
-## Local development (TODO: completion)
+- **Promised capabilities (R1–R7):** plan consumption + preflight, config rendering, incremental
+  deploy, rolling update, canary cutover, declarative rollback, Ready status postback.
+- **Domain ports (domain-defined, infra-implemented):** `Deployer` (render/apply/rollback/status),
+  `CICDPort` (GitOps sync/rollback), `Store` (provisioning_record persistence), `Locker` (execution lock).
+- **SPI adapters (ACL):** `HelmAdapter` / `ComposeAdapter` (direct-drive), `ArgoCDAdapter` (GitOps via
+  `CICDPort`); `SelectDeployer(mode,profile)` routes starter→Compose, standard/advanced→Helm, full→ArgoCD (§6.2).
+- **External components (default ✅ / optional):** Kubernetes (Helm) / Docker Compose ✅ (direct driver),
+  Redis ✅ (Cache/lock), OTel ✅ (Tracing); ArgoCD / Istio ❌ (optional, full profile only, §12.2).
 
-- Build/Test/Run commands
-- How to access meta repository `dependencies/` dependency graph and `profiles/` presets
+## Local development
+
+Stdlib-only (no third-party modules) so the whole module is offline-verifiable:
+
+```bash
+make build           # go build ./...
+make lint            # go vet ./...
+make test            # go test ./...   (28 tests across 6 packages)
+make run             # go run ./cmd    (listens on :8080)
+```
+
+The service defaults to an **offline** wiring: an in-memory `Store`/`Locker` and a `FakeCICD`, so it
+runs and is testable without Kubernetes/ArgoCD/Redis/PostgreSQL. Point `CONFIG_PATH` at a JSON overlay
+(keys mirror `infrastructure/config/config.yaml`) to change mode/rollout. Production swaps in the
+PostgreSQL/Redis persistence and a real ArgoCD `CICDPort` in `cmd/Bootstrap`. Rendering reads the meta
+repository `openstrata-meta/profiles/` presets and `dependencies/config/` combination-level examples
+(paths in `provisioner.metaRepo`).
+
+### Quickstart
+
+```bash
+curl -X POST localhost:8080/v1/apply -H 'content-type: application/json' -d '{
+  "plan": {"added":[{"repo_name":"ai-gateway-core","version":"1.0.0"}],
+           "removed":[{"repo_name":"legacy"}], "checksum":"chk-1"},
+  "profile":"standard", "tenant_id":"t1"}'
+# -> { "results":[...], "plan_checksum":"chk-1", "summary":"1 added, 0 reused, 1 removed" }
+
+curl localhost:8080/v1/plan/chk-1/apply-result
+curl -X POST localhost:8080/v1/rollback -H 'content-type: application/json' \
+  -d '{"component":"ai-gateway-core"}'
+curl localhost:8080/v1/status/ai-gateway-core
+```
 
 > Evolutionary AI coding: The `docs/ (ARCH.md, DESIGN.md, SKILLS.md, SPECS.md, adr/)` of this repository is the source of truth shared by AI assistants and contributors; new decisions are recorded as ADRs in `docs/adr/`.
