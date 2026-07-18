@@ -26,7 +26,10 @@ func main() {
 	}
 	h := Bootstrap(cfg)
 
-	listen := "0.0.0.0:8080"
+	listen := os.Getenv("ADDR")
+	if listen == "" {
+		listen = "0.0.0.0:8080"
+	}
 	log.Printf("ai-provisioning-engine listening on %s (mode=%s)", listen, cfg.Provisioner.Mode)
 	srv := &http.Server{
 		Addr:              listen,
