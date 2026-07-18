@@ -1,10 +1,13 @@
 # Binaries
-*.exe *.dll *.so *.dylib *.test *.out
-# Go workspace
-go.work
-# IDE
-.idea/ .vscode/ *.swp *.swo
-# OS
-.DS_Store Thumbs.db
-# Env
-.env .env.local
+/app
+*.exe
+*.out
+
+# Test / coverage
+*.test
+coverage.txt
+coverage.out
+
+# Local env
+*.local.json
+.env
