@@ -1,7 +1,7 @@
 # ai-provisioning-engine · Architecture documentation
 
 > Corresponding design documents §1 (positioning and boundaries), §2 (responsibility list), §3 (core abstraction and interface), §6 (external adapter)
-> Platform version v1.4.0 | Domain: assembly (assembly domain · provisioning/deployment engine) | Required: core
+> Platform version v1.0.0 | Domain: assembly (assembly domain · provisioning/deployment engine) | Required: core
 
 ---
 

@@ -4,7 +4,7 @@
 > **Language · Framework**: Go · Gin + Cobra + Wire (DDD four layers; the hot path for execution and orchestration can be Hertz/go-zero)
 > **Domain**: assembly (assembly domain · provisioning/deployment engine)
 > **optional**: false (core · core, boot portal/assembly hub)
-> **Platform version**: v1.4.0
+> **Platform version**: v1.0.0
 > **Document Status**: Draft
 > **Responsible Person**: OpenStrata Architecture Group
 > **Associated links**: This repository [arch/ARCH.md](../../arch/ARCH.md) · [skills/SKILLS.md](../../skills/SKILLS.md) · [specs/SPECS.md](../../specs/SPECS.md); Architecture design document §13.3 (Dependency-aware automatic upgrade · Provisioning Engine) · §13.5 (Rollback and Security) · §9 (K8s Deployment) · §10.4 (SPI Multiple Implementation) · §12.2 (Four-Level Prefabrication) · §15.5 (DDD Layering) · §16 (BOM)
