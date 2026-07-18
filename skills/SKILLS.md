@@ -1,15 +1,15 @@
-# ai-provisioning-engine · 算法/并发/安全规则
+# ai-provisioning-engine · Algorithm/Concurrency/Safety Rules
 
-> 对应设计文档 §5（关键算法）、§9（并发与性能）、§12（可观测性/安全）
+> Corresponding design documents §5 (key algorithms), §9 (concurrency and performance), §12 (observability/security)
 
 ---
 
-## §5 关键算法
+## §5 Key algorithm
 
-### 5.1 配置渲染（Plan → 部署配置）
+### 5.1 Configure rendering (Plan → Deployment configuration)
 
-**输入**：AssemblyPlan + profile + 元仓局部 config
-**输出**：Helm Values / Compose YAML / K8s Manifest
+**Input**: AssemblyPlan + profile + meta repository local config
+**Output**: Helm Values/Compose YAML/K8s Manifest
 
 ```
 function render(plan, profile):
@@ -18,75 +18,75 @@ function render(plan, profile):
 
     values = {}
     for component in (plan.Added ∪ plan.Changed):
-        base    = loadFromBom(component.version)     // bom.yaml 钉死版本
-        local   = loadFromProfile(profile, component) // profile external 段
-        appConf = loadFromAppConfig(component)       // infrastructure/config/ 局部
-        merged  = merge(local, appConf, base)        // 优先级: app > profile > bom
+        base    = loadFromBom(component.version)     //bom.yaml pinned version
+        local   = loadFromProfile(profile, component) //profile external section
+        appConf = loadFromAppConfig(component)       //infrastructure/config/local
+        merged  = merge(local, appConf, base)        //Priority: app > profile > bom
         values[component.name] = merged
 
     return RenderOutput(kind=renderer.kind, artifacts=renderer.marshal(values))
 ```
 
-### 5.2 增量应用
+### 5.2 Incremental application
 
 ```
 function diffApply(plan, currentState):
-    added   = plan.Added   - currentState   // 新增部署
-    removed = plan.Removed ∩ currentState   // 确认下线
-    changed = plan.Added   ∩ currentState but version/config diff  // 滚动更新
-    reused  = plan.Reused  ∩ currentState   // 跳过
+    added   = plan.Added   - currentState   //New deployment
+    removed = plan.Removed ∩ currentState   //Confirm offline
+    changed = plan.Added   ∩ currentState but version/config diff  //rolling update
+    reused  = plan.Reused  ∩ currentState   //jump over
 
     for a in added:     deploy(a)
     for r in removed:   decommission(r)
     for c in changed:   rollingUpdate(c)
-    for ru in reused:   skip(ru)           // 不重启已运行服务
+    for ru in reused:   skip(ru)           //Do not restart running services
 ```
 
-**原则**：只动差异，已运行服务不重启（除非配置变更才滚动）。
+**Principle**: Only the differences are moved, running services are not restarted (unless the configuration changes, they are rolled).
 
-### 5.3 滚动更新
+### 5.3 Rolling update
 
 ```
 function rollingUpdate(component):
     desired = component.replicas
     for each replica:
         startNew(replica)
-        waitForReady(replica)     // 探针检查
+        waitForReady(replica)     //Probe check
         terminateOld(replica)
-    // 参数: maxSurge=1, maxUnavailable=0
-    // 每次只替换1个，始终保持全部可用
+    //Parameters: maxSurge=1, maxUnavailable=0
+    //Only replace 1 at a time, always keep them all available
 ```
 
-### 5.4 灰度升级（双写校验）
+### 5.4 Canary upgrade (double-write verification)
 
-影响面大的切换（如向量库 Milvus↔Qdrant）：
+Switching with large impact (such as vector library Milvus↔Qdrant):
 
 ```
 function grayCutover(oldComponent, newComponent):
-    // 阶段1：双写
+    //Stage 1: Double Write
     parallel:
         write(oldComponent, data)
         write(newComponent, data)
 
-    // 阶段2：校验一致性
+    //Phase 2: Verify consistency
     for each record:
         assert read(oldComponent, key) == read(newComponent, key)
 
-    // 阶段3：切流量
+    //Stage 3: Cut over traffic
     if verifyPass:
         switchTraffic(newComponent)
 
-    // 阶段4：退役旧组件
+    //Phase 4: Retirement of old components
     markForRemoval(oldComponent)
 ```
 
-**约束**：非零停机，需运维窗口；仅 full 档启用。
+**Constraints**: Non-zero downtime, operation and maintenance window required; only full file enabled.
 
-### 5.5 回滚
+### 5.5 Rollback
 
 ```
 function rollback(component, fromRevision):
-    // 声明式：重放 Plan 中 enabled=false/oldVersion
+    //Declarative: enabled=false/oldVersion in Replay Plan
     revision = getLastRevision(component)
     manifest = renderFromRevision(revision)
     cicd.RollbackTo(manifest, revision)
@@ -94,20 +94,20 @@ function rollback(component, fromRevision):
 
 ---
 
-## §9 并发与性能
+## §9 Concurrency and performance
 
-### 9.1 执行模型
+### 9.1 Execution model
 
-Gin 管理 API；执行编排热路径可上 Hertz/go-zero（低延迟）。
+Gin management API; execution orchestration hot path can be on Hertz/go-zero (low latency).
 
-### 9.2 并行策略
+### 9.2 Parallel Strategy
 
-- **组件并行部署**：`Plan.Added` 中无依赖关系的组件可并行起 goroutine + WaitGroup
-- **拓扑排序**：有共享依赖（如先 PG 后依赖它的服务）按拓扑顺序串行
-- **Redis 分布式锁**：同一组件并发 Apply 用 `SET NX` 串行化，锁 TTL 60s
-- **全局信号量**：限制并发 Apply 数，避免压垮 K8s API Server
+- **Parallel deployment of components**: Components without dependencies in `Plan.Added` can be started in parallel using goroutine + WaitGroup
+- **Topological sorting**: If there are shared dependencies (such as PG first and then the services that depend on it), they are serialized in topological order.
+- **Redis distributed lock**: Concurrent Apply of the same component is serialized with `SET NX`, lock TTL 60s
+- **Global Semaphore**: Limit the number of concurrent Applys to avoid overwhelming the K8s API Server
 
-### 9.3 进度回传
+### 9.3 Progress return
 
 ```go
 type ProgressChan chan ComponentProgress
@@ -119,25 +119,25 @@ type ComponentProgress struct {
     Error      error
 }
 
-// 门户实时看板消费此 channel（§13.1 状态看板）
+//The portal real-time dashboard consumes this channel (§13.1 Status Dashboard)
 ```
 
-### 9.4 资源消耗
+### 9.4 Resource consumption
 
-| 场景 | CPU | 内存 | 说明 |
+| Scenario | CPU | Memory | Description |
 |------|-----|------|------|
-| 空转 | ~10m | ~32Mi | Gin server 空闲 |
-| 单组件 Apply | ~50m | ~128Mi | Helm install/upgrade |
-| 多组件并行 Apply | ~500m | ~512Mi | 信号量限制并发度 |
-| 灰度双写 | ~200m | ~256Mi | 读写校验 |
+| Idle | ~10m | ~32Mi | Gin server idle |
+| Single component Apply | ~50m | ~128Mi | Helm install/upgrade |
+| Multi-component parallelism Apply | ~500m | ~512Mi | Semaphore limit concurrency |
+| canary dual writing | ~200m | ~256Mi | Read and write verification |
 
-### 9.5 拓扑排序编排（并行部署）
+### 9.5 Topological sorting and orchestration (parallel deployment)
 
 ```go
-// 按拓扑顺序编排组件部署，无依赖的并行执行
+//Orchestrate component deployment in topological order and execute in parallel without dependencies
 func deployByTopology(plan AssemblyPlan, deployer Deployer) error {
     graph := buildDependencyGraph(plan.Added)
-    layers := graph.TopologicalLayers() // 每层内无依赖关系
+    layers := graph.TopologicalLayers() //No dependencies within each layer
 
     for _, layer := range layers {
         var wg sync.WaitGroup
@@ -158,67 +158,67 @@ func deployByTopology(plan AssemblyPlan, deployer Deployer) error {
         if err := firstOrNil(errCh); err != nil {
             return fmt.Errorf("layer deploy failed: %w", err)
         }
-        // 层间串行：等当前层全部 Ready 后再部署下一层
+        //Inter-layer serialization: wait until all current layers are Ready before deploying the next layer
     }
     return nil
 }
 ```
 
-### 9.6 性能规则
+### 9.6 Performance Rules
 
-| # | 标题 | 触发条件 | 约束 | 示例 |
+| # | Title | Trigger Condition | Constraints | Example |
 |---|------|----------|------|------|
-| P1 | goroutine 并发部署 | Plan Added > 1 | 无依赖组件并行，有依赖按拓扑串行 | `go deploy(a); go deploy(b); wg.Wait()` |
-| P2 | 分布式锁串行 | 同组件并发 Apply | Redis SET NX，TTL 60s | `if !lock.Acquire("apply:milvus")` → retry |
-| P3 | 信号量限并发 | 全局 Apply 数量 | `weighted.New(8)` | `sem.Acquire(ctx, 1)` |
-| P4 | Context 传播 | 每个 Apply | 超时 300s，支持 Ctrl-C 取消 | `ctx, cancel := context.WithTimeout(...)` |
-| P5 | 探针等待超时 | 部署后探测 Ready | 每个组件 30s 超时+3 次重试 | `waitForReady(component, 30s)` |
-| P6 | 进度 channel 非阻塞 | 状态回传 | buffered(100)，满则丢弃旧 | `select { case ch <- p: default: }` |
+| P1 | goroutine concurrent deployment | Plan Added > 1 | Parallel components without dependencies, serial topology with dependencies | `go deploy(a); go deploy(b); wg.Wait()` |
+| P2 | Distributed lock serial | Same component concurrency Apply | Redis SET NX, TTL 60s | `if !lock.Acquire("apply:milvus")` → retry |
+| P3 | Semaphore limit concurrency | Global Apply number | `weighted.New(8)` | `sem.Acquire(ctx, 1)` |
+| P4 | Context propagation | Each Apply | Timeout 300s, supports Ctrl-C cancellation | `ctx, cancel := context.WithTimeout(...)` |
+| P5 | Probe wait timeout | Post-deployment probe Ready | 30s timeout + 3 retries per component | `waitForReady(component, 30s)` |
+| P6 | Progress channel non-blocking | Status return | buffered(100), discard old ones when full | `select { case ch <- p: default: }` |
 
 ---
 
-## §12 安全
+## §12 Security
 
-### 12.1 安全边界
+### 12.1 Security Boundary
 
-执行属平台自身变更，所有操作必须审计。部署操作涉及实际生产环境变更，安全要求极高。
+The execution is a change of the platform itself, and all operations must be audited. Deployment operations involve changes to the actual production environment and require extremely high security requirements.
 
-### 12.2 安全规则
+### 12.2 Security rules
 
-| # | 标题 | 触发条件 | 约束 | 示例 |
+| # | Title | Trigger Condition | Constraints | Example |
 |---|------|----------|------|------|
-| S1 | 预检阻断 | Apply 前 | Plan 冲突/配额不符→直接阻断 | `if conflicts > 0: abort()` |
-| S2 | 全量审计 | 每次 Apply/Rollback | 即便 security 未开，平台本身变更留痕 | `INSERT INTO provisioning_record(...)` |
-| S3 | RBAC 隔离 | ArgoCD 操作 | 只动 ai-system + 租户命名空间 | ServiceAccount 仅榜单命名空间 |
-| S4 | Plan Checksum 校验 | 接收 Plan | Checksum 必须与 Resolver 产出一致 | `if plan.checksum != expected: reject` |
-| S5 | 回滚限制 | 回滚仅允许到历史 revision | revision 表中必须存在该记录 | `if !hasRevision(comp, rev): reject` |
-| S6 | 部署目标可达校验 | 每次 Apply | K8s API Server/Compose 连通性预检 | `if !ping(target): err("unreachable")` |
-| S7 | 并发锁防误操作 | 同组件并发 | 分布式锁 + 幂等 token | `lock("provisioner:" + component)` |
-| S8 | 敏感值脱敏 | 日志/输出 | Helm Values 中 secrets 不打印 | `maskSensitive(values)` before log |
+| S1 | Preflight blocking | Before Apply | Plan conflict/quota discrepancy → direct blocking | `if conflicts > 0: abort()` |
+| S2 | Full audit | Each Apply/Rollback | Even if security is not turned on, the platform itself changes leaving traces | `INSERT INTO provisioning_record(...)` |
+| S3 | RBAC isolation | ArgoCD operations | ai-system + tenant namespace only | ServiceAccount list namespace only |
+| S4 | Plan Checksum verification | Receive Plan | Checksum must be consistent with Resolver output | `if plan.checksum != expected: reject` |
+| S5 | Rollback restrictions | Rollback is only allowed to historical revision | The record must exist in the revision table | `if !hasRevision(comp, rev): reject` |
+| S6 | Deployment target reachability verification | Each Apply | K8s API Server/Compose connectivity pre-check | `if !ping(target): err("unreachable")` |
+| S7 | Concurrency lock to prevent misoperation | Same component concurrency | Distributed lock + idempotent token | `lock("provisioner:" + component)` |
+| S8 | Sensitive value desensitization | Log/output | Secrets in Helm Values ​​are not printed | `maskSensitive(values)` before log |
 
-### 12.3 审计要求
+### 12.3 Audit requirements
 
-每次 Apply/Rollback 记录：
+Each Apply/Rollback record:
 - plan_checksum、component、action（add/remove/rolling-update/gray-cutover）
-- revision（部署版本号）、status、错误信息
-- tenant、操作者、时间戳
+- revision (deployment version number), status, error message
+- tenant, operator, timestamp
 
-Prometheus 指标：
+Prometheus metrics:
 - `apply_total`、`apply_duration_seconds`、`apply_errors_total`
 - `rollback_total`、`component_ready_duration_seconds`
 
-### 12.4 风险场景与缓解
+### 12.4 Risk Scenarios and Mitigation
 
-| 风险 | 影响 | 缓解 |
+| Risk | Impact | Mitigation |
 |------|------|------|
-| 部署中途失败导致不一致 | 部分组件新版、部分旧版 | 拓扑串行依赖 + 失败回滚 |
-| 并发 Apply 同一组件 | 配置冲突 | Redis 分布式锁 + 幂等 token |
-| 灰度切换数据不一致 | 向量读写错误 | 双写校验通过后才切流量 |
-| ArgoCD 权限过大 | 误操作其他命名空间 | RBAC ServiceAccount 限定命名空间 |
-| Helm Values 含密钥泄漏 | 凭证泄露 | 日志脱敏 + Secrets 不落磁盘 |
+| Deployment failed midway, resulting in inconsistency | Some components are new versions, some are old versions | Topology serial dependency + failure rollback |
+| Concurrent Apply same component | Configuration conflict | Redis distributed lock + idempotent token |
+| canary switching data is inconsistent | Vector read and write errors | Traffic is cut only after double-write verification passes |
+| ArgoCD has excessive permissions | Misoperation of other namespaces | RBAC ServiceAccount restricted namespace |
+| Helm Values ​​including key leakage | Credential leakage | Log desensitization + Secrets will not be lost on disk |
 
 ---
 
-> 处理流水线参见 [design/DESIGN.md §4](../design/DESIGN.md#4-处理流水线--请求路径输入依赖展开计划生成执行)
-> 接口定义与包结构参见 [arch/ARCH.md](../arch/ARCH.md)
-> API 端点与部署详情参见 [specs/SPECS.md](../specs/SPECS.md)
+> For the processing pipeline, see [design/DESIGN.md §4](../design/DESIGN.md#4-Processing Pipeline--Request path input dependency expansion plan generation and execution)
+> For interface definition and package structure, see [arch/ARCH.md](../arch/ARCH.md)
+> For API endpoints and deployment details, see [specs/SPECS.md](../specs/SPECS.md)

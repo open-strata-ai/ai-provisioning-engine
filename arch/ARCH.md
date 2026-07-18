@@ -1,81 +1,81 @@
-# ai-provisioning-engine · 架构文档
+# ai-provisioning-engine · Architecture documentation
 
-> 对应设计文档 §1（定位与边界）、§2（职责清单）、§3（核心抽象与接口）、§6（外部适配器）
-> 平台版本 v1.4.0 | 领域：assembly（装配域 · 供给/部署引擎）| 必选性：core
+> Corresponding design documents §1 (positioning and boundaries), §2 (responsibility list), §3 (core abstraction and interface), §6 (external adapter)
+> Platform version v1.4.0 | Domain: assembly (assembly domain · provisioning/deployment engine) | Required: core
 
 ---
 
-## §1 定位
+## §1 Positioning
 
-### 1.1 一句话定位
+### 1.1 Positioning in one sentence
 
-`ai-provisioning-engine` 是 OpenStrata 装配中枢的**后半程**——部署/供给引擎。它消费 `ai-dependency-resolver` 产出的 **AssemblyPlan**，把计划落地为 **Helm Values / Compose / Operator 配置**，并通过 **ArgoCD 或直连 Helm** 应用到运行环境，实现「增量部署、滚动更新、零停机」。
+`ai-provisioning-engine` is the second half of the OpenStrata assembly backbone - the deployment/provisioning engine. It consumes the **AssemblyPlan** produced by `ai-dependency-resolver`, implements the plan into **Helm Values ​​/ Compose / Operator configuration**, and applies it to the running environment through **ArgoCD or direct connection to Helm** to achieve "incremental deployment, rolling update, zero downtime".
 
-### 1.2 解决的唯一问题
+### 1.2 The only problem solved
 
-把"一份确定的装配计划"变成"对环境的安全、可观测、可回滚的实际变更"——只动差异部分，已运行服务不重启。
+Turn "a confirmed assembly plan" into "actual changes to the environment that are safe, observable, and rollable" - only the differences are moved, and running services are not restarted.
 
-### 1.3 系统位置
+### 1.3 System location
 
 ```
 ai-dependency-resolver
   │ AssemblyPlan (+ Checksum)
   ▼
-ai-provisioning-engine  ← 本仓（只执行、不算依赖）
+ai-provisioning-engine  ← Main repository（Execute only、Not counted as dependence）
   │ Render + Apply
   ▼
 K8s Cluster / Compose（ArgoCD/Helm/Docker）
 ```
 
-### 1.4 边界声明
+### 1.4 Boundary declaration
 
-- **入**：`AssemblyPlan`（Added/Reused/Removed + Checksum，来自 resolver）
-- **出**：`ApplyResult[]`（各组件部署状态）+ 组件 Ready 信号 → 门户
-- **不负责**：依赖解析与 Plan 生成（ai-dependency-resolver）；组件运行时管理（各自运行时服务自身）
-- **核心原则**：增量部署、滚动更新、零停机（§13.3 三原则）
+- **IN**: `AssemblyPlan` (Added/Reused/Removed + Checksum, from resolver)
+- **Out**: `ApplyResult[]` (deployment status of each component) + component Ready signal → Portal
+- **Not responsible**: Dependency resolution and Plan generation (ai-dependency-resolver); component runtime management (each runtime service itself)
+- **Core Principles**: Incremental deployment, rolling updates, zero downtime (§13.3 Three Principles)
 
-### 1.5 与其他 Go 组件的关系
+### 1.5 Relationship with other Go components
 
-| 组件 | 关系 | 说明 |
+| Components | Relationships | Description |
 |------|------|------|
-| ai-dependency-resolver | 上游生产者 | 消费其 AssemblyPlan |
-| ai-cli | 上游调用方 | `aictl up/apply/rollback` 透传调用 |
-| ai-guide-portal | 上游调用方 | 门户触发执行编排，本仓为执行内核 |
-| 被部署组件 | 被装配者 | gateway/sandbox 等为其装配目标，不直接调用运行时 |
+| ai-dependency-resolver | upstream producer | consume its AssemblyPlan |
+| ai-cli | Upstream caller | `aictl up/apply/rollback` transparent call |
+| ai-guide-portal | Upstream caller | The portal triggers execution orchestration, and this repository is the execution core |
+| Deployed components | Assemblers | gateway/sandbox, etc. are their assembly targets and do not directly call the runtime |
 
-### 1.6 必选性
+### 1.6 Required
 
-**core**（§13.3 装配中枢）。阶段一~三由 `aictl up` 驱动 Compose；full 档由引导门户 + ArgoCD GitOps 驱动。
+**core** (§13.3 Assembly Center). Stages one to three are driven by `aictl up` to drive Compose; the full file is driven by the boot portal + ArgoCD GitOps.
 
 ---
 
-## §2 职责
+## §2 Responsibilities
 
-| # | 职责 | 必选 | 说明 |
+| # | Responsibilities | Required | Description |
 |---|------|------|------|
-| R1 | Plan 消费与校验 | core | 读取 AssemblyPlan，预检资源/依赖/冲突 |
-| R2 | 渲染配置 | core | Plan → Helm Values / Compose / Operator（按 profile） |
-| R3 | 增量部署 | core | 仅部署/变更差异，不停已有组件 |
-| R4 | 滚动更新 | core | 多副本滚动 + 探针保活 |
-| R5 | 灰度升级 | core | 影响面大者双写校验后切 |
-| R6 | 回滚 | core | 声明式回滚（enabled=false 重放） |
-| R7 | 状态回传 | core | 组件 Ready 状态回传门户 |
+| R1 | Plan consumption and verification | core | Read AssemblyPlan, pre-check resources/dependencies/conflicts |
+| R2 | Rendering Configuration | core | Plan → Helm Values ​​/ Compose / Operator (by profile) |
+| R3 | Incremental deployment | core | Deploy/change differences only, keep existing components |
+| R4 | rolling update | core | multi-copy rolling + probe keepalive |
+| R5 | Canary upgrade | core | Those with greater impact will be cut after double-writing verification |
+| R6 | rollback | core | declarative rollback (enabled=false replay) |
+| R7 | Status Postback | core | Component Ready Status Postback Portal |
 
-### 职责交互矩阵
+### Responsibility interaction matrix
 
 ```
   AssemblyPlan
        │
   ┌────▼─────┐
-  │ R1 预检   │──失败→ 阻断
+  │ R1 Preflight   │──fail→ block
   └────┬─────┘
-       │ 通过
+       │ pass
   ┌────▼─────┐    ┌──────────┐
-  │ R2 渲染   │◄───│ profile  │
+  │ R2 rendering   │◄───│ profile  │
   └────┬─────┘    └──────────┘
        │ Helm Values/Compose/Manifest
   ┌────┴─────────────────────┐
-  │       R3 增量部署         │
+  │       R3 incremental deployment         │
   │  Added → deploy          │
   │  Removed → decommission  │
   │  Reused → skip           │
@@ -83,18 +83,18 @@ K8s Cluster / Compose（ArgoCD/Helm/Docker）
        │
   ┌────┴──────┬──────────┐
   ▼           ▼          ▼
-R4 滚动    R5 灰度    R6 回滚
+R4 scroll    R5 canary    R6 rollback
   │           │          │
   └─────┬─────┴──────────┘
         ▼
-  R7 状态回传 → 门户
+  R7 status return → portal
 ```
 
 ---
 
-## §3 核心接口
+## §3 Core interface
 
-### 3.1 领域层类型定义（`domain/`）
+### 3.1 Domain layer type definition (`domain/`)
 
 ```go
 package domain
@@ -102,10 +102,10 @@ package domain
 import "context"
 
 // ============================================================
-// 输入（消费方模型）
+//Input (consumer model)
 // ============================================================
 
-// AssemblyPlan 来自 ai-dependency-resolver 的装配计划
+//AssemblyPlan Assembly plan from ai-dependency-resolver
 type AssemblyPlan struct {
     Added    []PlannedComponent
     Reused   []PlannedComponent
@@ -113,35 +113,35 @@ type AssemblyPlan struct {
     Checksum string
 }
 
-// PlannedComponent 计划中的单个组件
+//PlannedComponent A single component in the plan
 type PlannedComponent struct {
-    RepoName  string   // 自研 App 名或 OSS 实例名
+    RepoName  string   //Self-developed App name or OSS instance name
     Kind      string   // app | oss
-    Version   string   // 钉死版本
+    Version   string   //Crucified version
     Capability string
     DependsOn []string
 }
 
 // ============================================================
-// 产出模型
+//output model
 // ============================================================
 
-// RenderOutput 渲染产物
+//RenderOutput rendering product
 type RenderOutput struct {
     Kind      string            // helm-values | compose | k8s-manifest
-    Artifacts map[string][]byte // 文件名 → YAML 内容
+    Artifacts map[string][]byte //filename → YAML content
 }
 
-// ApplyResult 单个组件的执行结果
+//ApplyResult The execution result of a single component
 type ApplyResult struct {
-    Component string // 组件名
+    Component string //Component name
     Action    string // add | reuse | remove | rolling-update | gray-cutover
     Status    string // success | failed | in-progress
-    Revision  string // 部署 revision（用于回滚）
-    Message   string // 人类可读描述
+    Revision  string //Deploy revision (for rollback)
+    Message   string //human readable description
 }
 
-// ComponentStatus 组件运行时状态
+//ComponentStatus component runtime status
 type ComponentStatus struct {
     Name     string
     Ready    bool
@@ -151,46 +151,46 @@ type ComponentStatus struct {
 }
 ```
 
-### 3.2 领域 Port（解耦点）
+### 3.2 Domain Port (decoupling point)
 
 ```go
-// Deployer 是部署执行的领域 Port
-// 实现位于 infrastructure/adapter/，支持多 SPI 实现并存
+//Deployer is the field of deployment execution Port
+//The implementation is located in infrastructure/adapter/ and supports the coexistence of multiple SPI implementations.
 type Deployer interface {
-    // Render 将 Plan 按 profile 渲染为目标部署配置
+    //Render renders the Plan into the target deployment configuration by profile
     Render(ctx context.Context, plan AssemblyPlan, profile string) (RenderOutput, error)
 
-    // Apply 将渲染产物应用到目标环境
+    //Apply applies the rendering product to the target environment
     Apply(ctx context.Context, out RenderOutput) ([]ApplyResult, error)
 
-    // Rollback 将组件回滚到指定版本
+    //Rollback rolls the component back to the specified version
     Rollback(ctx context.Context, component string, toRevision string) error
 
-    // Status 查询组件当前运行状态
+    //Status Query the current running status of the component
     Status(ctx context.Context, component string) (ComponentStatus, error)
 }
 
-// CICDPort 是部署工具的 SPI 端口（interface_versions.CICD = 1.0.0）
-// ArgoCD / Istio 等实现此接口
+//CICDPort is the SPI port of the deployment tool (interface_versions.CICD = 1.0.0)
+//ArgoCD/Istio etc. implement this interface
 type CICDPort interface {
     Sync(ctx context.Context, manifest []byte) error
     RollbackTo(ctx context.Context, revision string) error
 }
 ```
 
-### 3.3 包结构（DDD 四层）
+### 3.3 Package structure (DDD four layers)
 
 ```
-cmd/provisioner/              # 入口：Gin HTTP server + gRPC
+cmd/provisioner/              #Entrance: Gin HTTP server + gRPC
 ├── domain/
 │   ├── model.go              # AssemblyPlan, RenderOutput, ApplyResult
 │   ├── port.go               # Deployer, CICDPort interfaces
-│   ├── service.go            # provisionerService（编排实现）
+│   ├── service.go            #provisionerService (orchestration implementation)
 │   └── service_test.go
 ├── application/
 │   └── usecase/
-│       ├── apply.go          # 编辑：预检→渲染→应用→回传
-│       └── rollback.go       # 回滚编排
+│       ├── apply.go          #Edit: Preflight → Render → Apply → Postback
+│       └── rollback.go       #Rollback orchestration
 ├── infrastructure/
 │   ├── adapter/
 │   │   ├── helm_adapter.go   # HelmAdapter：Helm install/upgrade/rollback
@@ -199,8 +199,8 @@ cmd/provisioner/              # 入口：Gin HTTP server + gRPC
 │   ├── config/
 │   │   └── config.yaml       # provisioner.mode, rollout, grayCutover
 │   └── persistence/
-│       ├── pg_record.go      # provisioning_record 表操作
-│       └── redis_lock.go     # 分布式执行锁
+│       ├── pg_record.go      #provisioning_record table operations
+│       └── redis_lock.go     #Distributed execution lock
 └── api/
     └── handler/
         ├── apply.go          # POST /v1/apply
@@ -209,7 +209,7 @@ cmd/provisioner/              # 入口：Gin HTTP server + gRPC
         └── result.go         # GET  /v1/plan/{checksum}/apply-result
 ```
 
-### 3.4 接口契约：请求/响应
+### 3.4 Interface Contract: Request/Response
 
 ```go
 // ApplyRequest
@@ -229,29 +229,29 @@ type ApplyResponse struct {
 // RollbackRequest
 type RollbackRequest struct {
     Component  string `json:"component"`
-    ToRevision string `json:"to_revision"` // 空=回滚到上一版本
+    ToRevision string `json:"to_revision"` //Empty = rollback to previous version
 }
 ```
 
 ---
 
-## §6 适配器
+## §6 Adapter
 
-### 6.1 SPI 适配器矩阵
+### 6.1 SPI Adapter Matrix
 
-| SPI 端口 | 角色 | 外部组件 | 默认/备选 | Adapter |
+| SPI Ports | Roles | External Components | Default/Alternate | Adapter |
 |----------|------|----------|-----------|---------|
-| CICD (1.0.0) | 消费方 | ArgoCD（optional）+ Istio（optional，full） | 备选/备选 | `ArgoCDAdapter` |
-| Cache (1.0.0) | 消费方 | Redis（core） | ✅ 唯一 | 分布式锁 + 状态缓存 |
-| Tracing (1.0.0) | 消费方 | OTel（core） | ✅ 唯一 | 部署链路 trace |
-| 部署目标 | 直接驱动 | Kubernetes / Docker Compose | ✅ 唯一 | HelmAdapter / ComposeAdapter |
+| CICD (1.0.0) | Consumer | ArgoCD (optional) + Istio (optional, full) | Alternative/Alternative | `ArgoCDAdapter` |
+| Cache (1.0.0) | Consumer | Redis (core) | ✅ Unique | Distributed lock + state cache |
+| Tracing (1.0.0) | Consumer | OTel (core) | ✅ Unique | Deployment link trace |
+| Deployment Targets | Direct Driver | Kubernetes / Docker Compose | ✅ Unique | HelmAdapter / ComposeAdapter |
 
-### 6.2 CICD 默认关逻辑
+### 6.2 CICD default off logic
 
-ArgoCD/Istio 为 **optional**（仅 full 档），因此本仓在 starter/standard/advanced 走**直连 Helm/Compose**，full 档走 ArgoCD。
+ArgoCD/Istio is **optional** (only full file), so this repository uses **direct connection to Helm/Compose** for starter/standard/advanced, and uses ArgoCD for full file.
 
 ```go
-// 渲染器选择逻辑（infrastructure/adapter/ 工厂）
+//Renderer selection logic (infrastructure/adapter/ factory)
 func SelectDeployer(mode string, profile string) Deployer {
     switch {
     case mode == "argocd" || profile == "full":
@@ -264,9 +264,9 @@ func SelectDeployer(mode string, profile string) Deployer {
 }
 ```
 
-### 6.3 防腐层设计
+### 6.3 Anti-corrosion layer design
 
-每个 Adapter 实现 `Deployer` 接口，切换部署目标零业务改动：
+Each Adapter implements the `Deployer` interface, switching deployment targets with zero business changes:
 
 ```go
 type HelmAdapter struct {
@@ -288,35 +288,35 @@ type ComposeAdapter struct {
     projectName  string
 }
 
-// 实现同上 Deployer 接口
+//Implement the same Deployer interface as above
 ```
 
-### 6.4 渲染流程
+### 6.4 Rendering process
 
 ```
 Plan (Added + Removed)
   │
   ▼
-按 profile 选择渲染器 → 读取元仓 dependencies/config/ + 本仓 infrastructure/config/
+according to profile Select renderer → Read meta repository dependencies/config/ + Main repository infrastructure/config/
   │
   ▼
-合并 Values（优先级）：用户覆盖 > profile > bom 默认
+merge Values（priority）：User coverage > profile > bom default
   │
   ▼
 RenderOutput（Helm Values YAML / compose.yaml / K8s manifest）
 ```
 
-### 6.5 适配器测试策略
+### 6.5 Adapter Testing Strategy
 
-| 测试类型 | 覆盖 | 环境 |
+| Test Type | Coverage | Environment |
 |----------|------|------|
-| 单测 | Render 字段正确性、滚动策略逻辑 | Go test |
-| 契约测试 | Helm/Compose/ArgoCD 三种适配器同一契约 | SPI 多实现一致性 |
-| 集成测试 | kind 集群 + mock ArgoCD | 增量子集不重启、滚动探针 |
-| 混沌测试 | 部署中途 kill Pod | 重试/超时→回滚 |
+| Single test | Render field correctness, rolling strategy logic | Go test |
+| Contract testing | Helm/Compose/ArgoCD three adapters have the same contract | SPI multi-implementation consistency |
+| Integration testing | kind cluster + mock ArgoCD | Incremental subset without restart, rolling probe |
+| Chaos testing | Kill Pod mid-deployment | Retry/timeout → rollback |
 
 ---
 
-> 详细处理流水线参见 [design/DESIGN.md §4](../design/DESIGN.md#4-处理流水线--请求路径输入依赖展开计划生成执行)
-> 并发/安全规则参见 [skills/SKILLS.md](../skills/SKILLS.md)
-> API 端点与部署详情参见 [specs/SPECS.md](../specs/SPECS.md)
+> For detailed processing pipeline, please refer to [design/DESIGN.md §4](../design/DESIGN.md#4-Processing Pipeline--Request Path Input Dependency Expansion Plan Generation and Execution)
+> See [skills/SKILLS.md](../skills/SKILLS.md) for concurrency/security rules
+> For API endpoints and deployment details, see [specs/SPECS.md](../specs/SPECS.md)
