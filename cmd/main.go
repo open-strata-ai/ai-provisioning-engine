@@ -44,8 +44,28 @@ func main() {
 // Bootstrap assembles the full object graph from config and returns the HTTP
 // handler. It is exported so tests can reuse the wiring.
 func Bootstrap(cfg config.Config) *httpapi.Handler {
-	store := persistence.NewStore()
-	locker := persistence.NewLocker()
+	pgDSN := os.Getenv("DATABASE_URL")
+	redisAddr := os.Getenv("REDIS_ADDR")
+
+	var store domain.Store
+	if pgDSN != "" {
+		pgstore, err := persistence.NewPostgresStore(pgDSN)
+		if err != nil {
+			log.Printf("WARN: falling back to in-memory store (%v)", err)
+			store = persistence.NewStore()
+		} else {
+			store = pgstore
+		}
+	} else {
+		store = persistence.NewStore()
+	}
+
+	var locker domain.Locker
+	if redisAddr != "" {
+		locker = persistence.NewRedisLocker(redisAddr)
+	} else {
+		locker = persistence.NewLocker()
+	}
 
 	opts := adapter.Options{
 		Replicas:       cfg.Provisioner.Replicas,
